@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 
 	"github.com/muesli/termenv"
@@ -16,7 +17,22 @@ type Point struct {
 	column int
 }
 
+type Line struct {
+	number  int64
+	content string
+}
+
+type LineRange struct {
+	start int64
+	end   int64
+}
+
+func (lr LineRange) ShiftBy(n int64) LineRange {
+	return LineRange{start: lr.start + n, end: lr.end + n}
+}
+
 type Editor struct {
+	logger        *slog.Logger
 	tty           *os.File
 	exitChan      chan error
 	keypressChan  chan rune
@@ -26,7 +42,7 @@ type Editor struct {
 	prevTermState *term.State
 }
 
-func NewEditor(input *os.File, output *os.File) *Editor {
+func NewEditor(input *os.File, output *os.File, log *os.File) *Editor {
 	var tty *os.File
 	if input == nil {
 		input = os.Stdin
@@ -36,7 +52,10 @@ func NewEditor(input *os.File, output *os.File) *Editor {
 		output = os.Stdout
 	}
 
+	logger := slog.New(slog.NewTextHandler(log, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
 	return &Editor{
+		logger:        logger,
 		tty:           tty,
 		exitChan:      make(chan error),
 		keypressChan:  make(chan rune),
@@ -60,7 +79,7 @@ func (e *Editor) Setup() error {
 	if err != nil {
 		return err
 	}
-	e.window = NewWindow(width, height)
+	e.window = NewWindow(width, height, e.logger)
 	return nil
 }
 
@@ -111,6 +130,7 @@ func (e *Editor) Start() error {
 		select {
 		case c := <-e.keypressChan:
 			e.handleKeypress(c)
+			e.output.ClearScreen()
 			e.render()
 			e.updateCursorPosition()
 		case err := <-e.exitChan:

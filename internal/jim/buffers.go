@@ -1,21 +1,23 @@
 package jim
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"io"
 	"os"
 )
 
 type Buffer interface {
-	io.ReadWriteCloser
+	io.Closer
 	Load() error
+	Save() (written int, err error)
+	LinesInRange(lineRange LineRange) []Line
 }
 
 type FileBuffer struct {
-	bytes.Buffer
-	path string
-	file *os.File
+	lines []Line
+	path  string
+	file  *os.File
 }
 
 func (fb *FileBuffer) Load() error {
@@ -29,7 +31,13 @@ func (fb *FileBuffer) Load() error {
 	}
 
 	fb.file = f
-	if _, err := io.Copy(fb, fb.file); err != nil {
+	scanner := bufio.NewScanner(f)
+	lineNumber := int64(1)
+	for scanner.Scan() {
+		fb.lines = append(fb.lines, Line{content: scanner.Text(), number: lineNumber})
+		lineNumber += 1
+	}
+	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("load file buffer: %w", err)
 	}
 
@@ -48,12 +56,20 @@ func (fb *FileBuffer) ensureFile() error {
 	return nil
 }
 
-func (fb *FileBuffer) Save() (written int64, err error) {
+func (fb *FileBuffer) Save() (written int, err error) {
 	if err := fb.ensureFile(); err != nil {
 		return 0, err
 	}
 
-	return io.Copy(fb.file, fb)
+	totalWritten := 0
+	for _, line := range fb.lines {
+		written, err := fb.file.WriteString(line.content)
+		totalWritten += written
+		if err != nil {
+			return totalWritten, err
+		}
+	}
+	return totalWritten, nil
 }
 
 func (fb *FileBuffer) Close() error {
@@ -61,6 +77,10 @@ func (fb *FileBuffer) Close() error {
 		return nil
 	}
 	return fb.file.Close()
+}
+
+func (fb *FileBuffer) LinesInRange(lr LineRange) []Line {
+	return fb.lines[lr.start-1 : lr.end-1]
 }
 
 func NewFileBuffer(path string) *FileBuffer {

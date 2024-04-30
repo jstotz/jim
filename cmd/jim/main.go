@@ -27,7 +27,11 @@ func main() {
 }
 
 func editFile(path string) error {
-	e := jim.NewEditor(nil, nil)
+	logFile, err := os.Create("jim.log")
+	if err != nil {
+		return err
+	}
+	e := jim.NewEditor(nil, nil, logFile)
 	if err := e.Setup(); err != nil {
 		return fmt.Errorf("editor setup: %w", err)
 	}
