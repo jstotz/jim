@@ -1,4 +1,4 @@
-package jed
+package jim
 
 import (
 	"bytes"

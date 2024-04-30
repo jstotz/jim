@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/jstotz/jed/internal/jed"
+	"github.com/jstotz/jim/internal/jim"
 )
 
 func main() {
@@ -27,7 +27,7 @@ func main() {
 }
 
 func editFile(path string) error {
-	e := jed.NewEditor(nil, nil)
+	e := jim.NewEditor(nil, nil)
 	if err := e.Setup(); err != nil {
 		return fmt.Errorf("editor setup: %w", err)
 	}
