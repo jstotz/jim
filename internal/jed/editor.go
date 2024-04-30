@@ -12,19 +12,18 @@ import (
 )
 
 type Point struct {
-	row    int64
-	column int64
+	row    int
+	column int
 }
 
 type Editor struct {
-	tty            *os.File
-	exitChan       chan error
-	keypressChan   chan rune
-	input          io.Reader
-	output         *termenv.Output
-	activeBuffer   Buffer
-	cursorPosition Point
-	prevTermState  *term.State
+	tty           *os.File
+	exitChan      chan error
+	keypressChan  chan rune
+	input         io.Reader
+	output        *termenv.Output
+	window        *Window
+	prevTermState *term.State
 }
 
 func NewEditor(input *os.File, output *os.File) *Editor {
@@ -36,16 +35,19 @@ func NewEditor(input *os.File, output *os.File) *Editor {
 	if output == nil {
 		output = os.Stdout
 	}
+
 	return &Editor{
-		tty:            tty,
-		exitChan:       make(chan error),
-		keypressChan:   make(chan rune),
-		input:          input,
-		output:         termenv.NewOutput(output),
-		activeBuffer:   nil,
-		prevTermState:  nil,
-		cursorPosition: Point{row: 0, column: 0},
+		tty:           tty,
+		exitChan:      make(chan error),
+		keypressChan:  make(chan rune),
+		input:         input,
+		output:        termenv.NewOutput(output),
+		prevTermState: nil,
 	}
+}
+
+func (e *Editor) GetSize() (width, height int, err error) {
+	return term.GetSize(int(e.tty.Fd()))
 }
 
 func (e *Editor) Setup() error {
@@ -54,13 +56,17 @@ func (e *Editor) Setup() error {
 	if err != nil {
 		return fmt.Errorf("terminal raw mode: %w", err)
 	}
+	width, height, err := e.GetSize()
+	if err != nil {
+		return err
+	}
+	e.window = NewWindow(width, height)
 	return nil
 }
 
 func (e *Editor) LoadFile(path string) error {
 	fb := NewFileBuffer(path)
-	e.activeBuffer = fb
-	return fb.Load()
+	return e.window.LoadBuffer(fb)
 }
 
 func (e *Editor) readInput() error {
@@ -75,24 +81,23 @@ func (e *Editor) readInput() error {
 	}
 }
 
-func (e *Editor) moveCursorRelative(deltaRow int64, deltaColumn int64) {
-	// TODO: bounds checking
-	e.cursorPosition.row += deltaRow
-	e.cursorPosition.column += deltaColumn
+func (e *Editor) updateCursorPosition() {
+	e.output.MoveCursor(e.window.cursor.row, e.window.cursor.column)
 }
 
 func (e *Editor) handleKeypress(c rune) {
+	w := e.window
 	switch c {
 	case 'q':
-		e.exitChan <- nil
+		close(e.exitChan)
 	case 'j':
-		e.moveCursorRelative(-1, 0)
+		w.MoveCursorRelative(1, 0)
 	case 'k':
-		e.moveCursorRelative(1, 0)
+		w.MoveCursorRelative(-1, 0)
 	case 'h':
-		e.moveCursorRelative(0, -1)
+		w.MoveCursorRelative(0, -1)
 	case 'l':
-		e.moveCursorRelative(0, 1)
+		w.MoveCursorRelative(0, 1)
 	}
 }
 
@@ -101,11 +106,13 @@ func (e *Editor) Start() error {
 	e.output.AltScreen()
 	go e.readInput()
 	e.render()
+	e.updateCursorPosition()
 	for {
 		select {
 		case c := <-e.keypressChan:
 			e.handleKeypress(c)
 			e.render()
+			e.updateCursorPosition()
 		case err := <-e.exitChan:
 			return err
 		}
@@ -113,7 +120,7 @@ func (e *Editor) Start() error {
 }
 
 func (e *Editor) render() error {
-	_, err := io.Copy(e.output, e.activeBuffer)
+	_, err := e.output.WriteString(e.window.Render())
 	return err
 }
 
