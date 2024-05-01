@@ -1,4 +1,4 @@
-package jim
+package editor
 
 import (
 	"bufio"
@@ -8,30 +8,15 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/jstotz/jim/internal/jim/commands"
+	"github.com/jstotz/jim/internal/jim/input"
+	"github.com/jstotz/jim/internal/jim/modes"
 	"github.com/muesli/termenv"
 	"golang.org/x/term"
 )
 
-type Point struct {
-	row    int
-	column int
-}
-
-type Line struct {
-	number  int64
-	content string
-}
-
-type LineRange struct {
-	start int64
-	end   int64
-}
-
-func (lr LineRange) ShiftBy(n int64) LineRange {
-	return LineRange{start: lr.start + n, end: lr.end + n}
-}
-
 type Editor struct {
+	mode          modes.Mode
 	logger        *slog.Logger
 	tty           *os.File
 	exitChan      chan error
@@ -57,8 +42,8 @@ func NewEditor(input *os.File, output *os.File, log *os.File) *Editor {
 	return &Editor{
 		logger:        logger,
 		tty:           tty,
-		exitChan:      make(chan error),
-		keypressChan:  make(chan rune),
+		exitChan:      make(chan error, 1),
+		keypressChan:  make(chan rune, 1),
 		input:         input,
 		output:        termenv.NewOutput(output),
 		prevTermState: nil,
@@ -93,8 +78,7 @@ func (e *Editor) readInput() error {
 	for {
 		c, _, err := r.ReadRune()
 		if err != nil {
-			e.exitChan <- err
-			return err
+			return e.exit(err)
 		}
 		e.keypressChan <- c
 	}
@@ -104,20 +88,31 @@ func (e *Editor) updateCursorPosition() {
 	e.output.MoveCursor(e.window.cursor.row, e.window.cursor.column)
 }
 
-func (e *Editor) handleKeypress(c rune) {
-	w := e.window
-	switch c {
-	case 'q':
-		close(e.exitChan)
-	case 'j':
-		w.MoveCursorRelative(1, 0)
-	case 'k':
-		w.MoveCursorRelative(-1, 0)
-	case 'h':
-		w.MoveCursorRelative(0, -1)
-	case 'l':
-		w.MoveCursorRelative(0, 1)
+func (e *Editor) handleKeypress(c rune) error {
+	cmd, err := input.HandleKeyPress(e.mode, c)
+	if err != nil {
+		return err
 	}
+	return e.runCommand(cmd)
+}
+
+func (e *Editor) runCommand(cmd commands.Command) error {
+	switch cmd := cmd.(type) {
+	case commands.Noop:
+		return nil
+	case commands.MoveCursorRelative:
+		e.window.MoveCursorRelative(cmd.DeltaRows, cmd.DeltaColumns)
+	case commands.InsertText:
+		e.logger.Warn("i don't know how to insert text yet", "cmd", cmd)
+	case commands.Exit:
+		return e.exit(nil)
+	}
+	return nil
+}
+
+func (e *Editor) exit(err error) error {
+	e.exitChan <- err
+	return err
 }
 
 func (e *Editor) Start() error {

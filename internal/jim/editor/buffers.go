@@ -1,4 +1,4 @@
-package jim
+package editor
 
 import (
 	"bufio"
