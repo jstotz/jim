@@ -28,7 +28,7 @@ func handleNormalKeyPress(c rune) (commands.Command, error) {
 	case 'k':
 		return commands.MoveCursorRelative{DeltaRows: -1, DeltaColumns: 0}, nil
 	case 'h':
-		return commands.MoveCursorRelative{DeltaRows: 0, DeltaColumns: -0}, nil
+		return commands.MoveCursorRelative{DeltaRows: 0, DeltaColumns: -1}, nil
 	case 'l':
 		return commands.MoveCursorRelative{DeltaRows: 0, DeltaColumns: 1}, nil
 	}
