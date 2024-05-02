@@ -73,12 +73,13 @@ func (e *Editor) LoadFile(path string) error {
 	return e.window.LoadBuffer(fb)
 }
 
-func (e *Editor) readInput() error {
+func (e *Editor) readInput() {
 	r := bufio.NewReader(e.input)
 	for {
 		c, _, err := r.ReadRune()
 		if err != nil {
-			return e.exit(err)
+			e.exit(err)
+			return
 		}
 		e.keypressChan <- c
 	}
@@ -105,32 +106,38 @@ func (e *Editor) runCommand(cmd commands.Command) error {
 	case commands.InsertText:
 		e.logger.Warn("i don't know how to insert text yet", "cmd", cmd)
 	case commands.Exit:
-		return e.exit(nil)
+		e.exit(nil)
+		return nil
 	}
 	return nil
 }
 
-func (e *Editor) exit(err error) error {
+func (e *Editor) exit(err error) {
 	e.exitChan <- err
-	return err
 }
 
 func (e *Editor) Start() error {
 	defer e.cleanup()
 	e.output.AltScreen()
 	go e.readInput()
-	e.render()
+	e.must(e.render())
 	e.updateCursorPosition()
 	for {
 		select {
 		case c := <-e.keypressChan:
-			e.handleKeypress(c)
+			e.must(e.handleKeypress(c))
 			e.output.ClearScreen()
-			e.render()
+			e.must(e.render())
 			e.updateCursorPosition()
 		case err := <-e.exitChan:
 			return err
 		}
+	}
+}
+
+func (e *Editor) must(err error) {
+	if err != nil {
+		e.exit(err)
 	}
 }
 
