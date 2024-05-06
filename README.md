@@ -9,8 +9,8 @@ hood.
 
 ## Planned Features
 
-[ ] Vim-like modal editing
-[ ] A client-server design supporting multiple frontends
-[ ] Native LSP support
-[ ] Lua scripting
-[ ] Undo tree
+* [ ] Vim-like modal editing
+* [ ] A client-server design supporting multiple frontends
+* [ ] Native LSP support
+* [ ] Lua scripting
+* [ ] Undo tree
