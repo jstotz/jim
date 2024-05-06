@@ -7,20 +7,25 @@ import (
 	"github.com/jstotz/jim/internal/jim/modes"
 )
 
+const KeyEscape = rune(27)
+
 func HandleKeyPress(mode modes.Mode, c rune) (commands.Command, error) {
 	switch mode {
 	case modes.ModeNormal:
 		return handleNormalKeyPress(c)
 	case modes.ModeInsert:
-		panic("insert mode not implemented")
+		return handleInsertKeyPress(c)
 	case modes.ModeCommand:
 		panic("command mode not implemented")
+	default:
+		return nil, fmt.Errorf("unknown mode: %v", mode)
 	}
-	return nil, fmt.Errorf("unknown mode: %v", mode)
 }
 
 func handleNormalKeyPress(c rune) (commands.Command, error) {
 	switch c {
+	case 'i':
+		return commands.ActivateMode{Mode: modes.ModeInsert}, nil
 	case 'q':
 		return commands.Exit{}, nil
 	case 'j':
@@ -31,6 +36,16 @@ func handleNormalKeyPress(c rune) (commands.Command, error) {
 		return commands.MoveCursorRelative{DeltaRows: 0, DeltaColumns: -1}, nil
 	case 'l':
 		return commands.MoveCursorRelative{DeltaRows: 0, DeltaColumns: 1}, nil
+	default:
+		return commands.Noop{}, nil
 	}
-	return commands.Noop{}, nil
+}
+
+func handleInsertKeyPress(c rune) (commands.Command, error) {
+	switch c {
+	case KeyEscape:
+		return commands.ActivateMode{Mode: modes.ModeNormal}, nil
+	default:
+		return commands.InsertText{Text: string(c)}, nil
+	}
 }

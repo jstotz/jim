@@ -90,6 +90,7 @@ func (e *Editor) updateCursorPosition() {
 }
 
 func (e *Editor) handleKeypress(c rune) error {
+	e.logger.Info("Handling keypress", "key", c)
 	cmd, err := input.HandleKeyPress(e.mode, c)
 	if err != nil {
 		return err
@@ -104,11 +105,22 @@ func (e *Editor) runCommand(cmd commands.Command) error {
 	case commands.MoveCursorRelative:
 		e.window.MoveCursorRelative(cmd.DeltaRows, cmd.DeltaColumns)
 	case commands.InsertText:
-		e.logger.Warn("i don't know how to insert text yet", "cmd", cmd)
+		return e.window.InsertText(e.window.CurrentPosition(), cmd.Text)
 	case commands.Exit:
 		e.exit(nil)
 		return nil
+	case commands.ActivateMode:
+		return e.activateMode(cmd.Mode)
+	default:
+		e.exit(fmt.Errorf("unsupported command: %+v", cmd))
+		return nil
 	}
+	return nil
+}
+
+func (e *Editor) activateMode(mode modes.Mode) error {
+	e.mode = mode
+	e.logger.Debug("Activated mode", "mode", mode)
 	return nil
 }
 

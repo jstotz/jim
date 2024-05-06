@@ -48,6 +48,14 @@ func (w *Window) MoveCursorRelative(deltaRow int, deltaColumn int) {
 	w.MoveCursor(Point{newRow, newColumn})
 }
 
+func (w *Window) InsertText(p Point, text string) error {
+	if err := w.buffer.InsertText(p, text); err != nil {
+		return err
+	}
+	w.MoveCursorRelative(0, len(text))
+	return nil
+}
+
 func (w *Window) shiftVisibleLines(n int64) {
 	w.logger.Debug(fmt.Sprintf("shifting visible lines by n: %d (%+v)", n, w.visibleLines))
 	if w.visibleLines.start+n < 1 {
@@ -67,6 +75,15 @@ func (w *Window) MoveCursor(point Point) {
 func (w *Window) LoadBuffer(b Buffer) error {
 	w.buffer = b
 	return b.Load()
+}
+
+func (w *Window) CurrentPosition() Point {
+	return Point{
+		// TODO: figure out types here
+		row: int(w.visibleLines.start + int64(w.cursor.row) - 1),
+		// TODO: Handle visible column offset
+		column: w.cursor.column,
+	}
 }
 
 func (w *Window) Render() string {

@@ -11,11 +11,12 @@ type Buffer interface {
 	io.Closer
 	Load() error
 	Save() (written int, err error)
-	LinesInRange(lineRange LineRange) []Line
+	LinesInRange(lineRange LineRange) []*Line
+	InsertText(position Point, text string) error
 }
 
 type FileBuffer struct {
-	lines []Line
+	lines []*Line
 	path  string
 	file  *os.File
 }
@@ -34,7 +35,7 @@ func (fb *FileBuffer) Load() error {
 	scanner := bufio.NewScanner(f)
 	lineNumber := int64(1)
 	for scanner.Scan() {
-		fb.lines = append(fb.lines, Line{content: scanner.Text(), number: lineNumber})
+		fb.lines = append(fb.lines, &Line{content: scanner.Text(), number: lineNumber})
 		lineNumber += 1
 	}
 	if err := scanner.Err(); err != nil {
@@ -79,8 +80,14 @@ func (fb *FileBuffer) Close() error {
 	return fb.file.Close()
 }
 
-func (fb *FileBuffer) LinesInRange(lr LineRange) []Line {
+func (fb *FileBuffer) LinesInRange(lr LineRange) []*Line {
 	return fb.lines[lr.start-1 : lr.end-1]
+}
+
+func (fb *FileBuffer) InsertText(p Point, text string) error {
+	line := fb.lines[p.row-1]
+	line.content = line.content[:p.column-1] + text + line.content[p.column-1:]
+	return nil
 }
 
 func NewFileBuffer(path string) *FileBuffer {
