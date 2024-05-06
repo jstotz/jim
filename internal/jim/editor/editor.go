@@ -7,6 +7,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/jstotz/jim/internal/jim/commands"
 	"github.com/jstotz/jim/internal/jim/input"
@@ -64,7 +65,7 @@ func (e *Editor) Setup() error {
 	if err != nil {
 		return err
 	}
-	e.window = NewWindow(width, height, e.logger)
+	e.window = NewWindow(width, height-1, e.logger)
 	return nil
 }
 
@@ -108,11 +109,11 @@ func (e *Editor) runCommand(cmd commands.Command) error {
 		return e.window.DeleteText(e.window.CurrentPosition(), cmd.Length)
 	case commands.InsertText:
 		return e.window.InsertText(e.window.CurrentPosition(), cmd.Text)
+	case commands.ActivateMode:
+		return e.activateMode(cmd.Mode)
 	case commands.Exit:
 		e.exit(nil)
 		return nil
-	case commands.ActivateMode:
-		return e.activateMode(cmd.Mode)
 	default:
 		e.exit(fmt.Errorf("unsupported command: %+v", cmd))
 		return nil
@@ -134,14 +135,14 @@ func (e *Editor) Start() error {
 	defer e.cleanup()
 	e.output.AltScreen()
 	go e.readInput()
-	e.must(e.render())
+	e.must(e.draw())
 	e.updateCursorPosition()
 	for {
 		select {
 		case c := <-e.keypressChan:
 			e.must(e.handleKeypress(c))
 			e.output.ClearScreen()
-			e.must(e.render())
+			e.must(e.draw())
 			e.updateCursorPosition()
 		case err := <-e.exitChan:
 			return err
@@ -155,9 +156,16 @@ func (e *Editor) must(err error) {
 	}
 }
 
-func (e *Editor) render() error {
-	_, err := e.output.WriteString(e.window.Render())
+func (e *Editor) draw() error {
+	_, err := e.output.WriteString(strings.Join([]string{
+		e.window.Render(),
+		e.renderStatusLine(),
+	}, "\n"))
 	return err
+}
+
+func (e *Editor) renderStatusLine() string {
+	return fmt.Sprintf("[%s]", strings.ToUpper(e.mode.String()))
 }
 
 func (e *Editor) cleanup() {
