@@ -21,6 +21,12 @@ type InsertText struct {
 
 func (InsertText) command() {}
 
+type DeleteText struct {
+	Length int
+}
+
+func (DeleteText) command() {}
+
 type MoveCursorRelative struct {
 	DeltaRows    int
 	DeltaColumns int

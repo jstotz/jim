@@ -13,6 +13,7 @@ type Buffer interface {
 	Save() (written int, err error)
 	LinesInRange(lineRange LineRange) []*Line
 	InsertText(position Point, text string) error
+	DeleteText(position Point, length int) error
 }
 
 type FileBuffer struct {
@@ -85,8 +86,24 @@ func (fb *FileBuffer) LinesInRange(lr LineRange) []*Line {
 }
 
 func (fb *FileBuffer) InsertText(p Point, text string) error {
-	line := fb.lines[p.row-1]
-	line.content = line.content[:p.column-1] + text + line.content[p.column-1:]
+	line := fb.lines[p.RowIndex()]
+	line.content = line.content[:p.ColumnIndex()] + text + line.content[p.ColumnIndex():]
+	return nil
+}
+
+func (fb *FileBuffer) DeleteText(p Point, length int) error {
+	if length == 0 {
+		return nil
+	}
+
+	line := fb.lines[p.RowIndex()]
+
+	if length < 0 {
+		line.content = line.content[:length+p.ColumnIndex()] + line.content[p.ColumnIndex():]
+		return nil
+	}
+
+	line.content = line.content[:p.ColumnIndex()] + line.content[length+p.ColumnIndex():]
 	return nil
 }
 

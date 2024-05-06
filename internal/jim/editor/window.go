@@ -56,6 +56,16 @@ func (w *Window) InsertText(p Point, text string) error {
 	return nil
 }
 
+func (w *Window) DeleteText(p Point, length int) error {
+	if err := w.buffer.DeleteText(p, length); err != nil {
+		return err
+	}
+	if length < 0 {
+		w.MoveCursorRelative(0, length)
+	}
+	return nil
+}
+
 func (w *Window) shiftVisibleLines(n int64) {
 	w.logger.Debug(fmt.Sprintf("shifting visible lines by n: %d (%+v)", n, w.visibleLines))
 	if w.visibleLines.start+n < 1 {

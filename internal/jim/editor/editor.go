@@ -104,6 +104,8 @@ func (e *Editor) runCommand(cmd commands.Command) error {
 		return nil
 	case commands.MoveCursorRelative:
 		e.window.MoveCursorRelative(cmd.DeltaRows, cmd.DeltaColumns)
+	case commands.DeleteText:
+		return e.window.DeleteText(e.window.CurrentPosition(), cmd.Length)
 	case commands.InsertText:
 		return e.window.InsertText(e.window.CurrentPosition(), cmd.Text)
 	case commands.Exit:
