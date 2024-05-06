@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	KeyEnter     = rune(13)
 	KeyEscape    = rune(27)
 	KeyBackspace = rune(127)
 )
@@ -19,7 +20,7 @@ func HandleKeyPress(mode modes.Mode, c rune) (commands.Command, error) {
 	case modes.ModeInsert:
 		return handleInsertKeyPress(c)
 	case modes.ModeCommand:
-		panic("command mode not implemented")
+		return handleCommandKeyPress(c)
 	default:
 		return nil, fmt.Errorf("unknown mode: %v", mode)
 	}
@@ -29,6 +30,8 @@ func handleNormalKeyPress(c rune) (commands.Command, error) {
 	switch c {
 	case 'i':
 		return commands.ActivateMode{Mode: modes.ModeInsert}, nil
+	case ':':
+		return commands.ActivateMode{Mode: modes.ModeCommand}, nil
 	case 'q':
 		return commands.Exit{}, nil
 	case 'j':
@@ -46,7 +49,7 @@ func handleNormalKeyPress(c rune) (commands.Command, error) {
 	}
 }
 
-func handleInsertKeyPress(c rune) (commands.Command, error) {
+func handleCommonEditModeKeyPress(c rune) (commands.Command, error) {
 	switch c {
 	case KeyEscape:
 		return commands.ActivateMode{Mode: modes.ModeNormal}, nil
@@ -54,5 +57,18 @@ func handleInsertKeyPress(c rune) (commands.Command, error) {
 		return commands.DeleteText{Length: -1}, nil
 	default:
 		return commands.InsertText{Text: string(c)}, nil
+	}
+}
+
+func handleInsertKeyPress(c rune) (commands.Command, error) {
+	return handleCommonEditModeKeyPress(c)
+}
+
+func handleCommandKeyPress(c rune) (commands.Command, error) {
+	switch c {
+	case KeyEnter:
+		return commands.EvalCommandBuffer{}, nil
+	default:
+		return handleCommonEditModeKeyPress(c)
 	}
 }

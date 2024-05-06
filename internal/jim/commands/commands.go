@@ -37,3 +37,7 @@ func (MoveCursorRelative) command() {}
 type Exit struct{}
 
 func (Exit) command() {}
+
+type EvalCommandBuffer struct{}
+
+func (EvalCommandBuffer) command() {}

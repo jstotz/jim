@@ -26,6 +26,7 @@ type Editor struct {
 	output        *termenv.Output
 	window        *Window
 	prevTermState *term.State
+	commandWindow *Window
 }
 
 func NewEditor(input *os.File, output *os.File, log *os.File) *Editor {
@@ -41,6 +42,7 @@ func NewEditor(input *os.File, output *os.File, log *os.File) *Editor {
 	logger := slog.New(slog.NewTextHandler(log, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	return &Editor{
+		mode:          modes.ModeNormal,
 		logger:        logger,
 		tty:           tty,
 		exitChan:      make(chan error, 1),
@@ -55,6 +57,13 @@ func (e *Editor) GetSize() (width, height int, err error) {
 	return term.GetSize(int(e.tty.Fd()))
 }
 
+func (e *Editor) FocusedWindow() *Window {
+	if e.mode == modes.ModeCommand {
+		return e.commandWindow
+	}
+	return e.window
+}
+
 func (e *Editor) Setup() error {
 	prevTermState, err := term.MakeRaw(int(e.tty.Fd()))
 	e.prevTermState = prevTermState
@@ -65,13 +74,17 @@ func (e *Editor) Setup() error {
 	if err != nil {
 		return err
 	}
-	e.window = NewWindow(width, height-1, e.logger)
+	e.window = NewWindow(nil, 0, width, height-1, e.logger)
+
+	// TODO: refactor to use a new memory buffer
+	e.commandWindow = NewWindow(NewFileBuffer("", e.logger), height-1, width, 1, e.logger)
+
 	return nil
 }
 
 func (e *Editor) LoadFile(path string) error {
-	fb := NewFileBuffer(path)
-	return e.window.LoadBuffer(fb)
+	fb := NewFileBuffer(path, e.logger)
+	return e.FocusedWindow().LoadBuffer(fb)
 }
 
 func (e *Editor) readInput() {
@@ -87,7 +100,9 @@ func (e *Editor) readInput() {
 }
 
 func (e *Editor) updateCursorPosition() {
-	e.output.MoveCursor(e.window.cursor.row, e.window.cursor.column)
+	w := e.FocusedWindow()
+	e.logger.Debug("Updating cursor position", "window", w)
+	e.output.MoveCursor(w.cursor.row+w.rowOffset, w.cursor.column)
 }
 
 func (e *Editor) handleKeypress(c rune) error {
@@ -99,30 +114,52 @@ func (e *Editor) handleKeypress(c rune) error {
 	return e.runCommand(cmd)
 }
 
+func (e *Editor) eval(expr string) error {
+	if expr == "w" {
+		written, err := e.window.buffer.Save()
+		e.logger.Debug("Saved buffer", "written", written)
+		return err
+	}
+	return fmt.Errorf("invalid expression: %s", expr)
+}
+
 func (e *Editor) runCommand(cmd commands.Command) error {
+	w := e.FocusedWindow()
 	switch cmd := cmd.(type) {
 	case commands.Noop:
 		return nil
 	case commands.MoveCursorRelative:
-		e.window.MoveCursorRelative(cmd.DeltaRows, cmd.DeltaColumns)
+		e.FocusedWindow().MoveCursorRelative(cmd.DeltaRows, cmd.DeltaColumns)
 	case commands.DeleteText:
-		return e.window.DeleteText(e.window.CurrentPosition(), cmd.Length)
+		return w.DeleteText(w.CurrentPosition(), cmd.Length)
 	case commands.InsertText:
-		return e.window.InsertText(e.window.CurrentPosition(), cmd.Text)
+		return w.InsertText(w.CurrentPosition(), cmd.Text)
 	case commands.ActivateMode:
 		return e.activateMode(cmd.Mode)
+	case commands.EvalCommandBuffer:
+		return e.evalCommandBuffer()
 	case commands.Exit:
 		e.exit(nil)
 		return nil
 	default:
-		e.exit(fmt.Errorf("unsupported command: %+v", cmd))
+		e.exit(fmt.Errorf("unsupported command: %#v", cmd))
 		return nil
 	}
 	return nil
 }
 
+func (e *Editor) evalCommandBuffer() error {
+	expr := strings.TrimSpace(e.commandWindow.buffer.String())
+	if err := e.eval(expr); err != nil {
+		e.logger.Debug("eval command buffer", "err", err)
+	}
+	e.commandWindow.Clear()
+	return nil
+}
+
 func (e *Editor) activateMode(mode modes.Mode) error {
 	e.mode = mode
+	e.commandWindow.Clear()
 	e.logger.Debug("Activated mode", "mode", mode)
 	return nil
 }
@@ -160,11 +197,15 @@ func (e *Editor) draw() error {
 	_, err := e.output.WriteString(strings.Join([]string{
 		e.window.Render(),
 		e.renderStatusLine(),
-	}, "\n"))
+	}, "\r\n"))
 	return err
 }
 
 func (e *Editor) renderStatusLine() string {
+	if e.mode == modes.ModeCommand {
+		content := e.commandWindow.Render()
+		return fmt.Sprintf(":%s", content)
+	}
 	return fmt.Sprintf("[%s]", strings.ToUpper(e.mode.String()))
 }
 

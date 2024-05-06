@@ -13,12 +13,14 @@ type Window struct {
 	cursor       Point
 	width        int
 	height       int
+	rowOffset    int
 }
 
-func NewWindow(width int, height int, logger *slog.Logger) *Window {
+func NewWindow(buffer Buffer, rowOffset int, width int, height int, logger *slog.Logger) *Window {
 	return &Window{
 		logger:       logger,
-		buffer:       nil,
+		buffer:       buffer,
+		rowOffset:    rowOffset,
 		cursor:       Point{1, 1},
 		visibleLines: LineRange{1, int64(height)},
 		width:        width,
@@ -46,6 +48,11 @@ func (w *Window) MoveCursorRelative(deltaRow int, deltaColumn int) {
 	}
 
 	w.MoveCursor(Point{newRow, newColumn})
+}
+
+func (w *Window) Clear() {
+	w.buffer.Clear()
+	w.cursor = Point{1, 1}
 }
 
 func (w *Window) InsertText(p Point, text string) error {
@@ -98,8 +105,13 @@ func (w *Window) CurrentPosition() Point {
 
 func (w *Window) Render() string {
 	var sb strings.Builder
-	for _, line := range w.buffer.LinesInRange(w.visibleLines) {
-		sb.WriteString(line.content + "\r\n")
+	lines := w.buffer.LinesInRange(w.visibleLines)
+	for idx, line := range lines {
+		sb.WriteString(line.content)
+		if idx < len(lines)-1 {
+			sb.WriteString("\r\n")
+		}
+
 	}
 	return sb.String()
 }
