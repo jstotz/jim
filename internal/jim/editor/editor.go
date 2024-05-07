@@ -16,6 +16,11 @@ import (
 	"golang.org/x/term"
 )
 
+const (
+	cursorStyleBlock = "\033[1 q"
+	cursorStyleLine  = "\033[5 q"
+)
+
 type Editor struct {
 	mode          modes.Mode
 	logger        *slog.Logger
@@ -99,10 +104,29 @@ func (e *Editor) readInput() {
 	}
 }
 
-func (e *Editor) updateCursorPosition() {
+func (e *Editor) updateCursor() {
 	w := e.FocusedWindow()
-	e.logger.Debug("Updating cursor position", "window", w)
+	e.logger.Debug("Updating cursor", "window", w)
 	e.output.MoveCursor(w.cursor.row+w.rowOffset, w.cursor.column)
+	e.setCursorStyle()
+}
+
+func (e *Editor) setCursorStyle() {
+	switch e.mode {
+	case modes.ModeNormal:
+		e.mustWriteString(cursorStyleBlock)
+	case modes.ModeInsert, modes.ModeCommand:
+		e.mustWriteString(cursorStyleLine)
+	}
+}
+
+func (e *Editor) mustWriteString(s string) (written int) {
+	written, err := e.output.WriteString(s)
+	if err != nil {
+		e.exit(err)
+		return 0
+	}
+	return written
 }
 
 func (e *Editor) handleKeypress(c rune) error {
@@ -173,14 +197,14 @@ func (e *Editor) Start() error {
 	e.output.AltScreen()
 	go e.readInput()
 	e.must(e.draw())
-	e.updateCursorPosition()
+	e.updateCursor()
 	for {
 		select {
 		case c := <-e.keypressChan:
 			e.must(e.handleKeypress(c))
 			e.output.ClearScreen()
 			e.must(e.draw())
-			e.updateCursorPosition()
+			e.updateCursor()
 		case err := <-e.exitChan:
 			return err
 		}
