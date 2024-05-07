@@ -106,7 +106,6 @@ func (e *Editor) readInput() {
 
 func (e *Editor) updateCursor() {
 	w := e.FocusedWindow()
-	e.logger.Debug("Updating cursor", "window", w)
 	e.output.MoveCursor(w.cursor.row+w.rowOffset, w.cursor.column)
 	e.setCursorStyle()
 }
@@ -138,13 +137,22 @@ func (e *Editor) handleKeypress(c rune) error {
 	return e.runCommand(cmd)
 }
 
-func (e *Editor) eval(expr string) error {
+func (e *Editor) parseExpr(expr string) (commands.Command, error) {
 	if expr == "w" {
-		written, err := e.window.buffer.Save()
-		e.logger.Debug("Saved buffer", "written", written)
+		return commands.Save{}, nil
+	}
+	if expr == "q" {
+		return commands.Exit{}, nil
+	}
+	return commands.Noop{}, fmt.Errorf("invalid expression: %s", expr)
+}
+
+func (e *Editor) eval(expr string) error {
+	cmd, err := e.parseExpr(expr)
+	if err != nil {
 		return err
 	}
-	return fmt.Errorf("invalid expression: %s", expr)
+	return e.runCommand(cmd)
 }
 
 func (e *Editor) runCommand(cmd commands.Command) error {
@@ -152,6 +160,8 @@ func (e *Editor) runCommand(cmd commands.Command) error {
 	switch cmd := cmd.(type) {
 	case commands.Noop:
 		return nil
+	case commands.Save:
+		return e.saveBuffer()
 	case commands.MoveCursorRelative:
 		e.FocusedWindow().MoveCursorRelative(cmd.DeltaRows, cmd.DeltaColumns)
 	case commands.DeleteText:
@@ -164,12 +174,16 @@ func (e *Editor) runCommand(cmd commands.Command) error {
 		return e.evalCommandBuffer()
 	case commands.Exit:
 		e.exit(nil)
-		return nil
 	default:
-		e.exit(fmt.Errorf("unsupported command: %#v", cmd))
-		return nil
+		return fmt.Errorf("unsupported command: %#v", cmd)
 	}
 	return nil
+}
+
+func (e *Editor) saveBuffer() error {
+	written, err := e.window.buffer.Save()
+	e.logger.Debug("Saved buffer", "written", written)
+	return err
 }
 
 func (e *Editor) evalCommandBuffer() error {
@@ -178,6 +192,7 @@ func (e *Editor) evalCommandBuffer() error {
 		e.logger.Debug("eval command buffer", "err", err)
 	}
 	e.commandWindow.Clear()
+	e.must(e.activateMode(modes.ModeNormal))
 	return nil
 }
 

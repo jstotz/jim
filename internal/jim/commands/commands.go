@@ -41,3 +41,7 @@ func (Exit) command() {}
 type EvalCommandBuffer struct{}
 
 func (EvalCommandBuffer) command() {}
+
+type Save struct{}
+
+func (Save) command() {}
