@@ -79,10 +79,10 @@ func (e *Editor) Setup() error {
 	if err != nil {
 		return err
 	}
-	e.window = NewWindow(nil, 0, width, height-1, e.logger)
+	e.window = NewWindow(nil, 0, 0, width, height-1, e.logger)
 
 	// TODO: refactor to use a new memory buffer
-	e.commandWindow = NewWindow(NewFileBuffer("", e.logger), height-1, width, 1, e.logger)
+	e.commandWindow = NewWindow(NewFileBuffer("", e.logger), height-1, 1, width, 1, e.logger)
 
 	return nil
 }
@@ -106,7 +106,7 @@ func (e *Editor) readInput() {
 
 func (e *Editor) updateCursor() {
 	w := e.FocusedWindow()
-	e.output.MoveCursor(w.cursor.row+w.rowOffset, w.cursor.column)
+	e.output.MoveCursor(w.cursor.row+w.rowOffset, w.cursor.column+w.columnOffset)
 	e.setCursorStyle()
 }
 

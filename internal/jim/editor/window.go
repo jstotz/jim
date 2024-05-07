@@ -14,13 +14,15 @@ type Window struct {
 	width        int
 	height       int
 	rowOffset    int
+	columnOffset int
 }
 
-func NewWindow(buffer Buffer, rowOffset int, width int, height int, logger *slog.Logger) *Window {
+func NewWindow(buffer Buffer, rowOffset int, columnOffset int, width int, height int, logger *slog.Logger) *Window {
 	return &Window{
 		logger:       logger,
 		buffer:       buffer,
 		rowOffset:    rowOffset,
+		columnOffset: columnOffset,
 		cursor:       Point{1, 1},
 		visibleLines: LineRange{1, int64(height)},
 		width:        width,
