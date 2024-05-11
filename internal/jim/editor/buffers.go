@@ -16,6 +16,8 @@ const (
 type Buffer interface {
 	fmt.Stringer
 	io.Closer
+	io.ReaderFrom
+	io.Writer
 	Load() error
 	Save() (written int, err error)
 	Clear()
@@ -24,11 +26,122 @@ type Buffer interface {
 	DeleteText(position Point, length int) error
 }
 
-type FileBuffer struct {
+type MemoryBuffer struct {
 	logger *slog.Logger
 	lines  []*Line
+}
+
+func (mb *MemoryBuffer) LinesInRange(lr LineRange) []*Line {
+	return mb.lines[lr.start-1 : lr.end]
+}
+
+func (mb *MemoryBuffer) InsertText(p Point, text string) error {
+	line := mb.lines[p.RowIndex()]
+	line.content = line.content[:p.ColumnIndex()] + text + line.content[p.ColumnIndex():]
+	return nil
+}
+
+func (mb *MemoryBuffer) DeleteText(p Point, length int) error {
+	if length == 0 {
+		return nil
+	}
+
+	line := mb.lines[p.RowIndex()]
+
+	if length < 0 {
+		line.content = line.content[:length+p.ColumnIndex()] + line.content[p.ColumnIndex():]
+		return nil
+	}
+
+	line.content = line.content[:p.ColumnIndex()] + line.content[length+p.ColumnIndex():]
+	return nil
+}
+
+func (mb *MemoryBuffer) Clear() {
+	mb.lines = []*Line{{}}
+}
+
+func (mb *MemoryBuffer) String() string {
+	var sb strings.Builder
+	for _, line := range mb.lines {
+		sb.WriteString(line.content + "\n")
+	}
+	return sb.String()
+}
+
+func (mb *MemoryBuffer) Write(p []byte) (n int, err error) {
+	panic("not implemented. use ReadFrom")
+}
+
+func (mb *MemoryBuffer) ReadFrom(r io.Reader) (n int64, err error) {
+	mb.logger.Info("ReadFrom:", "reader", r)
+	scanner := bufio.NewScanner(r)
+	// TODO: refactor to use a bufio reader
+	buf := make([]byte, 0, MaxLineLength)
+	scanner.Buffer(buf, MaxLineLength)
+	var totalRead int64
+	lineNumber := int64(1)
+	for scanner.Scan() {
+		content := scanner.Text()
+		mb.logger.Debug("appending line: ", "content", content, "number", lineNumber)
+		mb.lines = append(mb.lines, &Line{content: content, number: lineNumber})
+		lineNumber += 1
+		totalRead += int64(len(scanner.Bytes()))
+	}
+	if err := scanner.Err(); err != nil {
+		return totalRead, fmt.Errorf("memory buffer read: %w", err)
+	}
+	return
+}
+
+func (MemoryBuffer) Close() error {
+	// Noop
+	return nil
+}
+
+func (MemoryBuffer) Load() error {
+	// Noop
+	return nil
+}
+
+func (MemoryBuffer) Save() (written int, err error) {
+	// Noop
+	return 0, nil
+}
+
+type FileBuffer struct {
+	mbuf   *MemoryBuffer
+	logger *slog.Logger
 	path   string
 	file   *os.File
+}
+
+func (fb *FileBuffer) String() string {
+	return fb.mbuf.String()
+}
+
+func (fb *FileBuffer) ReadFrom(r io.Reader) (n int64, err error) {
+	return fb.mbuf.ReadFrom(r)
+}
+
+func (fb *FileBuffer) Write(p []byte) (n int, err error) {
+	return fb.mbuf.Write(p)
+}
+
+func (fb *FileBuffer) LinesInRange(lineRange LineRange) []*Line {
+	return fb.mbuf.LinesInRange(lineRange)
+}
+
+func (fb *FileBuffer) InsertText(position Point, text string) error {
+	return fb.mbuf.InsertText(position, text)
+}
+
+func (fb *FileBuffer) DeleteText(position Point, length int) error {
+	return fb.mbuf.DeleteText(position, length)
+}
+
+func (fb *FileBuffer) Clear() {
+	fb.mbuf.Clear()
 }
 
 func (fb *FileBuffer) Load() error {
@@ -41,19 +154,11 @@ func (fb *FileBuffer) Load() error {
 		return fmt.Errorf("load file buffer: %w", err)
 	}
 
-	fb.lines = nil
 	fb.file = f
-	scanner := bufio.NewScanner(f)
-	// TODO: refactor to use a bufio reader
-	buf := make([]byte, 0, MaxLineLength)
-	scanner.Buffer(buf, MaxLineLength)
-	lineNumber := int64(1)
-	for scanner.Scan() {
-		fb.lines = append(fb.lines, &Line{content: scanner.Text(), number: lineNumber})
-		lineNumber += 1
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("load file buffer: %w", err)
+	fb.mbuf = NewMemoryBuffer(fb.logger)
+
+	if _, err := io.Copy(fb.mbuf, fb.file); err != nil {
+		return err
 	}
 
 	return nil
@@ -85,15 +190,8 @@ func (fb *FileBuffer) Save() (written int, err error) {
 		return 0, fmt.Errorf("save seek: %w", err)
 	}
 
-	totalWritten := 0
-	for _, line := range fb.lines {
-		written, err := f.WriteString(line.content + "\n")
-		totalWritten += written
-		if err != nil {
-			return totalWritten, err
-		}
-	}
-	return totalWritten, nil
+	// TODO: write incrementally
+	return f.WriteString(fb.mbuf.String())
 }
 
 func (fb *FileBuffer) Close() error {
@@ -103,48 +201,17 @@ func (fb *FileBuffer) Close() error {
 	return fb.file.Close()
 }
 
-func (fb *FileBuffer) LinesInRange(lr LineRange) []*Line {
-	return fb.lines[lr.start-1 : lr.end]
-}
-
-func (fb *FileBuffer) InsertText(p Point, text string) error {
-	line := fb.lines[p.RowIndex()]
-	line.content = line.content[:p.ColumnIndex()] + text + line.content[p.ColumnIndex():]
-	return nil
-}
-
-func (fb *FileBuffer) DeleteText(p Point, length int) error {
-	if length == 0 {
-		return nil
-	}
-
-	line := fb.lines[p.RowIndex()]
-
-	if length < 0 {
-		line.content = line.content[:length+p.ColumnIndex()] + line.content[p.ColumnIndex():]
-		return nil
-	}
-
-	line.content = line.content[:p.ColumnIndex()] + line.content[length+p.ColumnIndex():]
-	return nil
-}
-
-func (fb *FileBuffer) Clear() {
-	fb.lines = []*Line{{}}
-}
-
-func (fb *FileBuffer) String() string {
-	var sb strings.Builder
-	for _, line := range fb.lines {
-		sb.WriteString(line.content + "\n")
-	}
-	return sb.String()
-}
-
 func NewFileBuffer(path string, logger *slog.Logger) *FileBuffer {
 	return &FileBuffer{
 		logger: logger,
-		lines:  []*Line{{}},
+		mbuf:   NewMemoryBuffer(logger),
 		path:   path,
+	}
+}
+
+func NewMemoryBuffer(logger *slog.Logger) *MemoryBuffer {
+	return &MemoryBuffer{
+		logger: logger,
+		lines:  []*Line{},
 	}
 }
