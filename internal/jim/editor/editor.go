@@ -81,8 +81,7 @@ func (e *Editor) Setup() error {
 	}
 	e.window = NewWindow(nil, 0, 0, width, height-1, e.logger)
 
-	// TODO: refactor to use a new memory buffer
-	e.commandWindow = NewWindow(NewFileBuffer("", e.logger), height-1, 1, width, 1, e.logger)
+	e.commandWindow = NewWindow(NewMemoryBuffer(e.logger), height-1, 1, width, 1, e.logger)
 
 	return nil
 }
