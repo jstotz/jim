@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	cursorStyleBlock = "\033[1 q"
+	cursorStyleBlock = "\033[2 q"
 	cursorStyleLine  = "\033[5 q"
 )
 
