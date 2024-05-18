@@ -74,20 +74,20 @@ func (mb *MemoryBuffer) Write(p []byte) (n int, err error) {
 }
 
 func (mb *MemoryBuffer) ReadFrom(r io.Reader) (n int64, err error) {
-	mb.logger.Info("ReadFrom:", "reader", r)
-	scanner := bufio.NewScanner(r)
 	// TODO: refactor to use a bufio reader
+	scanner := bufio.NewScanner(r)
 	buf := make([]byte, 0, MaxLineLength)
 	scanner.Buffer(buf, MaxLineLength)
 	var totalRead int64
 	lineNumber := int64(1)
+
 	for scanner.Scan() {
 		content := scanner.Text()
-		mb.logger.Debug("appending line: ", "content", content, "number", lineNumber)
 		mb.lines = append(mb.lines, &Line{content: content, number: lineNumber})
 		lineNumber += 1
 		totalRead += int64(len(scanner.Bytes()))
 	}
+
 	if err := scanner.Err(); err != nil {
 		return totalRead, fmt.Errorf("memory buffer read: %w", err)
 	}
