@@ -106,7 +106,7 @@ func (MemoryBuffer) Load() error {
 
 func (MemoryBuffer) Save() (written int, err error) {
 	// Noop
-	return 0, nil
+	return 0, fmt.Errorf("unable to save a memory buffer")
 }
 
 type FileBuffer struct {
