@@ -1,4 +1,4 @@
-package commands
+package command
 
 import "github.com/jstotz/jim/internal/jim/modes"
 

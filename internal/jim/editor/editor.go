@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/jstotz/jim/internal/jim/commands"
+	"github.com/jstotz/jim/internal/jim/command"
 	"github.com/jstotz/jim/internal/jim/input"
 	"github.com/jstotz/jim/internal/jim/modes"
 	"github.com/muesli/termenv"
@@ -136,14 +136,14 @@ func (e *Editor) handleKeypress(c rune) error {
 	return e.runCommand(cmd)
 }
 
-func (e *Editor) parseExpr(expr string) (commands.Command, error) {
+func (e *Editor) parseExpr(expr string) (command.Command, error) {
 	if expr == "w" {
-		return commands.Save{}, nil
+		return command.Save{}, nil
 	}
 	if expr == "q" {
-		return commands.Exit{}, nil
+		return command.Exit{}, nil
 	}
-	return commands.Noop{}, fmt.Errorf("invalid expression: %s", expr)
+	return command.Noop{}, fmt.Errorf("invalid expression: %s", expr)
 }
 
 func (e *Editor) eval(expr string) error {
@@ -154,24 +154,24 @@ func (e *Editor) eval(expr string) error {
 	return e.runCommand(cmd)
 }
 
-func (e *Editor) runCommand(cmd commands.Command) error {
+func (e *Editor) runCommand(cmd command.Command) error {
 	w := e.FocusedWindow()
 	switch cmd := cmd.(type) {
-	case commands.Noop:
+	case command.Noop:
 		return nil
-	case commands.Save:
+	case command.Save:
 		return e.saveBuffer()
-	case commands.MoveCursorRelative:
+	case command.MoveCursorRelative:
 		e.FocusedWindow().MoveCursorRelative(cmd.DeltaRows, cmd.DeltaColumns)
-	case commands.DeleteText:
+	case command.DeleteText:
 		return w.DeleteText(w.CurrentPosition(), cmd.Length)
-	case commands.InsertText:
+	case command.InsertText:
 		return w.InsertText(w.CurrentPosition(), cmd.Text)
-	case commands.ActivateMode:
+	case command.ActivateMode:
 		return e.activateMode(cmd.Mode)
-	case commands.EvalCommandBuffer:
+	case command.EvalCommandBuffer:
 		return e.evalCommandBuffer()
-	case commands.Exit:
+	case command.Exit:
 		e.exit(nil)
 	default:
 		return fmt.Errorf("unsupported command: %#v", cmd)
