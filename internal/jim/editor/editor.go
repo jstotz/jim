@@ -34,7 +34,6 @@ type Editor struct {
 	prevTermState *term.State
 	commandWindow *Window
 	luaState      *lua.LState
-	luaAPIModule  *APIModule
 }
 
 func NewEditor(input *os.File, output *os.File, log *os.File) *Editor {
