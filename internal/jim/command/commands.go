@@ -52,6 +52,13 @@ type EvalCommandBuffer struct{}
 
 func (EvalCommandBuffer) command() {}
 
+// EvalLua evaluates the given Lua script
+type EvalLua struct {
+	Script string
+}
+
+func (EvalLua) command() {}
+
 // Save persists the currently active buffer
 type Save struct{}
 

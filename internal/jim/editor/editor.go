@@ -13,6 +13,7 @@ import (
 	"github.com/jstotz/jim/internal/jim/input"
 	"github.com/jstotz/jim/internal/jim/modes"
 	"github.com/muesli/termenv"
+	lua "github.com/yuin/gopher-lua"
 	"golang.org/x/term"
 )
 
@@ -23,7 +24,7 @@ const (
 
 type Editor struct {
 	mode          modes.Mode
-	logger        *slog.Logger
+	Logger        *slog.Logger
 	tty           *os.File
 	exitChan      chan error
 	keypressChan  chan rune
@@ -32,6 +33,8 @@ type Editor struct {
 	window        *Window
 	prevTermState *term.State
 	commandWindow *Window
+	luaState      *lua.LState
+	luaAPIModule  *APIModule
 }
 
 func NewEditor(input *os.File, output *os.File, log *os.File) *Editor {
@@ -47,8 +50,8 @@ func NewEditor(input *os.File, output *os.File, log *os.File) *Editor {
 	logger := slog.New(slog.NewTextHandler(log, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	return &Editor{
+		Logger:        logger,
 		mode:          modes.ModeNormal,
-		logger:        logger,
 		tty:           tty,
 		exitChan:      make(chan error, 1),
 		keypressChan:  make(chan rune, 1),
@@ -79,15 +82,15 @@ func (e *Editor) Setup() error {
 	if err != nil {
 		return err
 	}
-	e.window = NewWindow(nil, 0, 0, width, height-1, e.logger)
+	e.window = NewWindow(nil, 0, 0, width, height-1, e.Logger)
 
-	e.commandWindow = NewWindow(NewMemoryBuffer(e.logger), height-1, 1, width, 1, e.logger)
+	e.commandWindow = NewWindow(NewMemoryBuffer(e.Logger), height-1, 1, width, 1, e.Logger)
 
 	return nil
 }
 
 func (e *Editor) LoadFile(path string) error {
-	fb := NewFileBuffer(path, e.logger)
+	fb := NewFileBuffer(path, e.Logger)
 	return e.FocusedWindow().LoadBuffer(fb)
 }
 
@@ -128,7 +131,7 @@ func (e *Editor) mustWriteString(s string) (written int) {
 }
 
 func (e *Editor) handleKeypress(c rune) error {
-	e.logger.Info("Handling keypress", "key", c)
+	e.Logger.Info("Handling keypress", "key", c)
 	cmd, err := input.HandleKeyPress(e.mode, c)
 	if err != nil {
 		return err
@@ -136,7 +139,10 @@ func (e *Editor) handleKeypress(c rune) error {
 	return e.runCommand(cmd)
 }
 
-func (e *Editor) parseExpr(expr string) (command.Command, error) {
+func (e *Editor) parseCommand(expr string) (command.Command, error) {
+	if strings.HasPrefix(expr, "lua ") {
+		return command.EvalLua{Script: expr[4:]}, nil
+	}
 	if expr == "w" {
 		return command.Save{}, nil
 	}
@@ -146,8 +152,8 @@ func (e *Editor) parseExpr(expr string) (command.Command, error) {
 	return command.Noop{}, fmt.Errorf("invalid expression: %s", expr)
 }
 
-func (e *Editor) eval(expr string) error {
-	cmd, err := e.parseExpr(expr)
+func (e *Editor) evalCommand(expr string) error {
+	cmd, err := e.parseCommand(expr)
 	if err != nil {
 		return err
 	}
@@ -171,6 +177,8 @@ func (e *Editor) runCommand(cmd command.Command) error {
 		return e.activateMode(cmd.Mode)
 	case command.EvalCommandBuffer:
 		return e.evalCommandBuffer()
+	case command.EvalLua:
+		return e.evalLua(cmd.Script)
 	case command.Exit:
 		e.exit(nil)
 	default:
@@ -181,24 +189,33 @@ func (e *Editor) runCommand(cmd command.Command) error {
 
 func (e *Editor) saveBuffer() error {
 	written, err := e.window.buffer.Save()
-	e.logger.Debug("Saved buffer", "written", written)
+	e.Logger.Debug("Saved buffer", "written", written)
 	return err
 }
 
 func (e *Editor) evalCommandBuffer() error {
 	expr := strings.TrimSpace(e.commandWindow.buffer.String())
-	if err := e.eval(expr); err != nil {
-		e.logger.Debug("eval command buffer", "err", err)
+	if err := e.evalCommand(expr); err != nil {
+		e.Logger.Error("eval command buffer error", "err", err)
 	}
 	e.commandWindow.Clear()
 	e.must(e.activateMode(modes.ModeNormal))
 	return nil
 }
 
+func (e *Editor) evalLua(script string) error {
+	e.Logger.Debug("running lua script", "script", script)
+	if err := e.luaState.DoString(script); err != nil {
+		e.Logger.Error("eval lua error", "err", err)
+		return err
+	}
+	return nil
+}
+
 func (e *Editor) activateMode(mode modes.Mode) error {
 	e.mode = mode
 	e.commandWindow.Clear()
-	e.logger.Debug("Activated mode", "mode", mode)
+	e.Logger.Debug("Activated mode", "mode", mode)
 	return nil
 }
 
@@ -209,6 +226,11 @@ func (e *Editor) exit(err error) {
 func (e *Editor) Start() error {
 	defer e.cleanup()
 	e.output.AltScreen()
+
+	e.luaState = lua.NewState()
+	NewAPIModule(e).Load()
+	defer e.luaState.Close()
+
 	go e.readInput()
 	e.must(e.draw())
 	e.updateCursor()
