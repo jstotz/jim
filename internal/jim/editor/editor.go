@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/jstotz/jim/internal/jim/command"
+	"github.com/jstotz/jim/internal/jim/config"
 	"github.com/jstotz/jim/internal/jim/input"
 	"github.com/jstotz/jim/internal/jim/modes"
 	"github.com/muesli/termenv"
@@ -34,16 +35,17 @@ type Editor struct {
 	prevTermState *term.State
 	commandWindow *Window
 	luaState      *lua.LState
+	inputHandler  *input.Handler
 }
 
-func NewEditor(input *os.File, output *os.File, log *os.File) *Editor {
+func NewEditor(inputFile *os.File, outputFile *os.File, log *os.File) *Editor {
 	var tty *os.File
-	if input == nil {
-		input = os.Stdin
-		tty = input
+	if inputFile == nil {
+		inputFile = os.Stdin
+		tty = inputFile
 	}
-	if output == nil {
-		output = os.Stdout
+	if outputFile == nil {
+		outputFile = os.Stdout
 	}
 
 	logger := slog.New(slog.NewTextHandler(log, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -54,9 +56,12 @@ func NewEditor(input *os.File, output *os.File, log *os.File) *Editor {
 		tty:           tty,
 		exitChan:      make(chan error, 1),
 		keypressChan:  make(chan rune, 1),
-		input:         input,
-		output:        termenv.NewOutput(output),
+		input:         inputFile,
+		output:        termenv.NewOutput(outputFile),
 		prevTermState: nil,
+		luaState:      lua.NewState(),
+		// TODO: Allow config customization
+		inputHandler: input.NewHandler(config.DefaultConfig()),
 	}
 }
 
@@ -131,7 +136,7 @@ func (e *Editor) mustWriteString(s string) (written int) {
 
 func (e *Editor) handleKeypress(c rune) error {
 	e.Logger.Info("Handling keypress", "key", c)
-	cmd, err := input.HandleKeyPress(e.mode, c)
+	cmd, err := e.inputHandler.HandleKeyPress(e.mode, c)
 	if err != nil {
 		return err
 	}
@@ -226,7 +231,6 @@ func (e *Editor) Start() error {
 	defer e.cleanup()
 	e.output.AltScreen()
 
-	e.luaState = lua.NewState()
 	NewAPIModule(e).Load()
 	defer e.luaState.Close()
 
